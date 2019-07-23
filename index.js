@@ -3,6 +3,8 @@ const helmet = require('helmet');
 const cors = require('cors')
 const bcrypt = require('bcryptjs')
 const md5 = require('md5')
+const session = require('express-session')
+const KnexSessionStore = require('connect-session-knex')(session)
 
 const Users = require('./users/users-model')
 
@@ -10,6 +12,28 @@ const server = express()
 
 server.use(helmet());
 server.use(express.json());
+
+server.use(express.json());
+// server.use(cookieParser());
+server.use(session({
+  name: 'sessionId', // name of the cookie
+  secret: 'keep it secret, keep it long', // we intend to encrypt
+  cookie: {
+    maxAge: 1000 * 60 * 60,
+    secure: false,
+    httpOnly: true,
+  },
+  resave: false,
+  saveUninitialized: true,
+  // extra chunk of config
+  store: new KnexSessionStore({
+    knex: require('./database/dbConfig'), // configured instance of knex
+    tablename: 'sessions', // table that will store sessions inside the db, name it anything you want
+    sidfieldname: 'sid', // column that will hold the session id, name it anything you want
+    createtable: true, // if the table does not exist, it will create it automatically
+    clearInterval: 1000 * 60 * 60, // time it takes to check for old sessions and remove them from the database to keep it clean and performant
+  }),
+}));
 server.use(cors());
 
 
@@ -87,20 +111,11 @@ let { username, password } = req.body;
  }
 
  function restrictedAccess(req, res, next) {
-    const { username, password } = req.headers;
-  
-    Users.findBy({ username })
-      .first()
-      .then(user => {
-        if (!user || !bcrypt.compareSync(password, user.password)) {
-          res.status(401).json({ message: "Please login" });
-        } else {
-          next();
-        }
-      })
-      .catch(error => {
-        next(new Error(error.message));
-      });
+    if(req.session && req.session.user){
+      next()
+    }else{
+      res.status(400).json({message: 'You shall not pass!'})
+    }
   }
 
 
